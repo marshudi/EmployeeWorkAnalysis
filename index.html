@@ -4,13 +4,10 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Employee Work Analysis</title>
-  <!-- Tailwind CSS via CDN -->
   <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
-  <!-- XLSX library for parsing Excel/CSV files -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.5/xlsx.full.min.js"></script>
 </head>
 <body class="bg-gray-100">
-  <!-- Using Tailwind's container class with auto margins and extra horizontal padding -->
   <div class="container mx-auto px-4 lg:px-10 py-6 bg-white shadow-lg rounded-lg mt-10">
     <h1 class="text-3xl font-bold text-center text-gray-800 mb-6">Employee Work Analysis</h1>
     <div id="drop-zone" class="border-2 border-dashed border-gray-400 p-10 rounded-lg text-center cursor-pointer hover:border-gray-600 transition-colors">
@@ -34,18 +31,16 @@
               <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
             </tr>
           </thead>
-          <tbody id="data-table-body" class="bg-white divide-y divide-gray-200">
-            <!-- Processed data will be injected here -->
-          </tbody>
+          <tbody id="data-table-body" class="bg-white divide-y divide-gray-200"></tbody>
         </table>
       </div>
-      <!-- Download Excel Button -->
       <div class="mt-4 text-center">
-        <button id="download-btn" class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">
-          Download Excel
-        </button>
+        <button id="download-btn" class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">Download Excel</button>
       </div>
     </div>
+
+    <!-- Invoice container will be generated dynamically -->
+    <div id="invoice-container" class="mt-10"></div>
   </div>
   <script src="app.js"></script>
 </body>
