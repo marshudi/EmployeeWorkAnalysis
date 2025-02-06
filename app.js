@@ -580,7 +580,13 @@ downloadBtn.addEventListener("click", () => {
 function initChart(labels, series) {
   const options = {
     series: series,
-    colors: ["#1C64F2", "#16BDCA", "#FDBA8C", "#E74694", "#a0aec0", "#f56565", "#68d391", "#ecc94b"],
+    colors: [
+      "#1C64F2", "#16BDCA", "#FDBA8C", "#E74694", "#a0aec0", "#f56565", "#68d391", "#ecc94b",
+      "#6a0dad", "#ff4500", "#00ced1", "#ff1493", "#ff6347", "#20b2aa", "#ff8c00", "#9370db",
+      "#8b0000", "#48d1cc", "#ff00ff", "#ffd700", "#008080", "#dc143c", "#7b68ee", "#008000",
+      "#ff69b4", "#4b0082", "#4682b4", "#ffb6c1", "#556b2f", "#2e8b57"
+    ],
+    
     chart: {
       height: 500,
       width: "100%",
