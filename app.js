@@ -7,42 +7,35 @@ const HIGHLIGHT_WORDS = {
   'Sanity': 'red'
 };
 
-// Role mappings for normalization with extra variations to capture common misspellings and differences.
+// Role mappings for normalization with extra variations.
 const ROLE_MAPPINGS = {
   // Project Manager Variations
   'proj mgr': 'project manager',
   'project manager': 'project manager',
-
   // PMO Variations
   'pmo': 'pmo consultant',
   'pm consultant': 'pmo consultant',
-
   // Technical Manager / Lead Variations
   'tech manager': 'technical manager',
   'technical manager': 'technical manager',
   'tech lead': 'technical manager / technical lead',
-
   // Principal Solution Architect Variations
   'principal sol': 'principal solution architect',
   'principal solution architect': 'principal solution architect',
-
   // QA Variations
   'qa lead': 'qa lead',
-  'qa engineer': 'senior qa',         // Map QA Engineer to QA Lead
+  'qa engineer': 'senior qa',
   'senior qa': 'senior qa',
   'qa / test': ['qa / test','qa','test'],
   'test': ['qa / test','qa','test'],
   'qa': ['qa / test','qa','test'],
-
   // Developer Variations
   'sr developer': ['developer / sr developer', 'sr developer', 'developer'],
   'developer': ['developer / sr developer', 'sr developer', 'developer'],
   'developer / sr developer': ['developer / sr developer', 'sr developer', 'developer'],
-
   // Release Manager / IT Engineer Variations
   'release manager': ['release manager', 'it engineer/ release manager', 'it engineer', 'release mgr'],
   'it engineer': ['release manager', 'it engineer/ release manager', 'it engineer'],
-
   // Business Analyst Variations
   'business analyst': 'solution architect / business analyst / dev lead / integration lead',
   'solution architect': 'solution architect / business analyst / dev lead / integration lead',
@@ -90,10 +83,16 @@ document.addEventListener('DOMContentLoaded', () => {
   const tbody = document.getElementById('data-table-body');
   const downloadBtn = document.getElementById('download-btn');
   const invoiceContainer = document.getElementById('invoice-container');
+  const chartContainer = document.getElementById('chart-container');
 
+  // Global variables to hold chart data and chart instance
   let aggregatedData = [];
   let roleCounts = {};
-  let roleLocationCounts = {}; // Format: "canonicalRole|locationType" => count
+  let roleLocationCounts = {};
+  let roleLocationManDays = {};
+  let chart; // will hold the ApexCharts instance
+  // Store aggregated chart expense data per location.
+  let chartData = { onsite: { roles: [], values: [] }, offsite: { roles: [], values: [] } };
 
   dropZone.addEventListener('click', () => fileInput.click());
   dropZone.addEventListener('dragover', (e) => {
@@ -129,9 +128,52 @@ document.addEventListener('DOMContentLoaded', () => {
         aggregatedData = processed.aggregatedData;
         roleCounts = processed.roleCounts;
         roleLocationCounts = processed.roleLocationCounts;
-        createInvoiceTableDynamic(roleLocationCounts);
+        roleLocationManDays = processed.roleLocationManDays;
+        createInvoiceTableDynamic(roleLocationCounts, roleLocationManDays);
         renderTable(aggregatedData);
         results.classList.remove('hidden');
+        invoiceContainer.classList.remove('hidden');
+
+        // --- Compute aggregated chart data as expenses ---
+        const aggregatedOnsite = {};
+        const aggregatedOffsite = {};
+        Object.keys(roleLocationManDays).forEach(key => {
+          const parts = key.split('|');
+          const role = parts[0];
+          const location = parts[1];
+          if (location === 'onsite') {
+            aggregatedOnsite[role] = (aggregatedOnsite[role] || 0) + roleLocationManDays[key];
+          } else if (location === 'offsite') {
+            aggregatedOffsite[role] = (aggregatedOffsite[role] || 0) + roleLocationManDays[key];
+          }
+        });
+        // Convert man-days to expenses using unit price from PRICE_MAPPING
+        const aggregatedExpenseOnsite = {};
+        Object.keys(aggregatedOnsite).forEach(role => {
+          if (PRICE_MAPPING[role]) {
+            aggregatedExpenseOnsite[role] = aggregatedOnsite[role] * PRICE_MAPPING[role].onsite;
+          } else {
+            aggregatedExpenseOnsite[role] = aggregatedOnsite[role];
+          }
+        });
+        const aggregatedExpenseOffsite = {};
+        Object.keys(aggregatedOffsite).forEach(role => {
+          if (PRICE_MAPPING[role]) {
+            aggregatedExpenseOffsite[role] = aggregatedOffsite[role] * PRICE_MAPPING[role].offsite;
+          } else {
+            aggregatedExpenseOffsite[role] = aggregatedOffsite[role];
+          }
+        });
+        chartData.onsite.roles = Object.keys(aggregatedExpenseOnsite);
+        chartData.onsite.values = chartData.onsite.roles.map(role => aggregatedExpenseOnsite[role]);
+        chartData.offsite.roles = Object.keys(aggregatedExpenseOffsite);
+        chartData.offsite.values = chartData.offsite.roles.map(role => aggregatedExpenseOffsite[role]);
+
+        // Show the chart container (it was initially hidden)
+        chartContainer.classList.remove('hidden');
+
+        // Update the chart based on the current checkbox states.
+        updateChart();
       } catch (error) {
         console.error('Error processing file:', error);
         tbody.innerHTML = `<tr><td colspan="10" class="text-center py-4 text-red-600">Error processing file: ${error.message}</td></tr>`;
@@ -159,6 +201,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const groupMap = new Map();
     const roleCounts = {};
     const roleLocationCounts = {}; // Format: "canonicalRole|locationType"
+    const roleLocationManDays = {}; // Sum of man-days per role|location
 
     rows.forEach(row => {
       const getValue = (colHeader) => {
@@ -174,9 +217,9 @@ document.addEventListener('DOMContentLoaded', () => {
           totalHours: 0,
           days: new Set(),
           descriptions: new Set(),
-          locationTypes: new Set(), // Will store "onsite" and/or "offsite"
-          roles: new Set(),         // Canonical roles (using mapping)
-          originalRoles: new Set(), // Original role text for display
+          locationTypes: new Set(),
+          roles: new Set(),
+          originalRoles: new Set(),
           projects: new Set()
         });
       }
@@ -188,7 +231,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const desc = getValue(columnMap.description);
       if (desc) group.descriptions.add(desc);
       
-      // Process location. If value contains "/" or "-", split it.
+      // Process location
       const locValue = getValue(columnMap.location);
       if (locValue) {
         if (locValue.includes('/') || locValue.includes('-')) {
@@ -209,27 +252,15 @@ document.addEventListener('DOMContentLoaded', () => {
       const role = getValue(columnMap.role);
       if (role) {
         group.originalRoles.add(role);
-        // Normalize the role and then map it to a canonical value.
         let normRole = normalizeRole(role);
         let canonicalRole = getMappedRole(normRole);
         if (Array.isArray(canonicalRole)) {
-          canonicalRole = canonicalRole[0]; // Take the first candidate if array.
+          canonicalRole = canonicalRole[0];
         }
         group.roles.add(canonicalRole);
       }
       const proj = getValue(columnMap.project);
       if (proj) group.projects.add(proj);
-    });
-    
-    // Build roleCounts and roleLocationCounts.
-    groupMap.forEach(group => {
-      group.roles.forEach(role => {
-        roleCounts[role] = (roleCounts[role] || 0) + 1;
-        group.locationTypes.forEach(locType => {
-          const key = role + '|' + locType;
-          roleLocationCounts[key] = (roleLocationCounts[key] || 0) + 1;
-        });
-      });
     });
     
     const output = [];
@@ -250,13 +281,24 @@ document.addEventListener('DOMContentLoaded', () => {
         summary: extractSummary(Array.from(group.descriptions).join(' | ')),
         description: status === 'Critical' ? Array.from(group.descriptions).join(' | ') : ''
       });
+      
+      // For each role and location combination in this group, add manDays
+      group.roles.forEach(role => {
+        roleCounts[role] = (roleCounts[role] || 0) + 1;
+        group.locationTypes.forEach(locType => {
+          const key = role + '|' + locType;
+          roleLocationCounts[key] = (roleLocationCounts[key] || 0) + 1;
+          roleLocationManDays[key] = (roleLocationManDays[key] || 0) + manDays;
+        });
+      });
     });
     
     output.sort((a, b) => parseFloat(b.totalHours) - parseFloat(a.totalHours));
     return {
       aggregatedData: output,
       roleCounts: roleCounts,
-      roleLocationCounts: roleLocationCounts
+      roleLocationCounts: roleLocationCounts,
+      roleLocationManDays: roleLocationManDays
     };
   }
 
@@ -272,8 +314,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // --- Create Invoice Table Dynamically ---
-  // For each key in roleLocationCounts with quantity > 0, we create a row.
-  function createInvoiceTableDynamic(roleLocationCounts) {
+  function createInvoiceTableDynamic(roleLocationCounts, roleLocationManDays) {
     invoiceContainer.innerHTML = '';
     const table = document.createElement('table');
     table.className = 'w-full table-auto border-collapse';
@@ -283,20 +324,20 @@ document.addEventListener('DOMContentLoaded', () => {
         <th class="px-4 py-2 text-left font-medium text-gray-700">Position</th>
         <th class="px-4 py-2 text-left font-medium text-gray-700">Location</th>
         <th class="px-4 py-2 text-left font-medium text-gray-700">Quantity</th>
+        <th class="px-4 py-2 text-left font-medium text-gray-700">ManDays</th>
         <th class="px-4 py-2 text-left font-medium text-gray-700">Unit</th>
         <th class="px-4 py-2 text-left font-medium text-gray-700">Unit Price</th>
         <th class="px-4 py-2 text-left font-medium text-gray-700">Discount %</th>
+        <th class="px-4 py-2 text-right font-medium text-gray-700">Total Price</th>
       </tr>`;
     const tbodyInv = document.createElement('tbody');
     
-    // Iterate over keys in roleLocationCounts.
     Object.keys(roleLocationCounts).forEach(key => {
       const qty = roleLocationCounts[key];
       if (qty > 0) {
         const parts = key.split('|');
         const canonicalRole = parts[0];
         const locType = parts[1];
-        // Use PRICE_MAPPING to get the default price.
         let priceData = PRICE_MAPPING[canonicalRole];
         if (!priceData) {
           for (let k in PRICE_MAPPING) {
@@ -307,27 +348,34 @@ document.addEventListener('DOMContentLoaded', () => {
           }
         }
         const unitPrice = priceData ? (locType === 'onsite' ? priceData.onsite : priceData.offsite) : 0;
-        // For display, we can show the role from the PRICE_MAPPING's role field if available.
-        let displayRole = priceData ? priceData.role : canonicalRole;
+        const displayRole = priceData ? priceData.role : canonicalRole;
+        const manDays = roleLocationManDays[key] || 0;
+        // Total price calculation remains unchanged: using only manDays, unit price and discount.
+        const totalPrice = unitPrice * manDays;
+        
         const tr = document.createElement('tr');
         tr.className = 'border-b';
         tr.innerHTML = `
           <td class="px-4 py-2 font-medium">${displayRole}</td>
           <td class="px-4 py-2">${locType.charAt(0).toUpperCase() + locType.slice(1)}</td>
           <td class="px-4 py-2">
-            <input type="number" required class="w-full px-3 py-2 border rounded-md" placeholder="Quantity" min="0" step="1" value="${qty}">
+            <input type="number" class="quantity-input w-full px-3 py-2 border rounded-md" readonly value="${qty}">
           </td>
           <td class="px-4 py-2">
-            <select class="w-full px-3 py-2 border rounded-md" required>
+            <input type="number" class="man-days-input w-full px-3 py-2 border rounded-md" required placeholder="ManDays" min="0" step="0.01" value="${manDays.toFixed(3)}">
+          </td>
+          <td class="px-4 py-2">
+            <select class="unit-select w-full px-3 py-2 border rounded-md" required>
               <option>MD</option>
             </select>
           </td>
           <td class="px-4 py-2">
-            <input type="number" required class="w-full px-3 py-2 border rounded-md" placeholder="Unit Price" min="0" step="0.01" value="${unitPrice.toFixed(2)}">
+            <input type="number" class="unit-price-input w-full px-3 py-2 border rounded-md" required placeholder="Unit Price" min="0" step="0.01" value="${unitPrice.toFixed(2)}">
           </td>
           <td class="px-4 py-2">
-            <input type="number" class="w-full px-3 py-2 border rounded-md" placeholder="Discount %" min="0" max="100" step="0.01">
+            <input type="number" class="discount-input w-full px-3 py-2 border rounded-md" placeholder="Discount %" min="0" max="100" step="0.01" value="0">
           </td>
+          <td class="px-4 py-2 total-price-cell text-right font-medium">${totalPrice.toFixed(2)}</td>
         `;
         tbodyInv.appendChild(tr);
       }
@@ -337,6 +385,39 @@ document.addEventListener('DOMContentLoaded', () => {
     table.appendChild(tbodyInv);
     invoiceContainer.innerHTML = `<h2 class="text-2xl font-bold mb-6">Invoice Item Details</h2>`;
     invoiceContainer.appendChild(table);
+
+    // Overall expenses display
+    const expensesDiv = document.createElement('div');
+    expensesDiv.id = 'total-expenses';
+    expensesDiv.className = 'mt-4 text-right font-bold';
+    invoiceContainer.appendChild(expensesDiv);
+
+    function recalcInvoiceTotals() {
+      let totalExpenses = 0;
+      tbodyInv.querySelectorAll('tr').forEach(row => {
+        // We ignore the quantity input in the calculation.
+        const manDaysInput = row.querySelector('.man-days-input');
+        const unitPriceInput = row.querySelector('.unit-price-input');
+        const discountInput = row.querySelector('.discount-input');
+        const totalPriceCell = row.querySelector('.total-price-cell');
+        const manDaysVal = parseFloat(manDaysInput.value) || 0;
+        const unitPriceVal = parseFloat(unitPriceInput.value) || 0;
+        const discountVal = parseFloat(discountInput.value) || 0;
+        let totalPrice = unitPriceVal * manDaysVal;
+        if (discountVal > 0) {
+          totalPrice = totalPrice * (1 - discountVal / 100);
+        }
+        totalPriceCell.textContent = totalPrice.toFixed(2);
+        totalExpenses += totalPrice;
+      });
+      expensesDiv.textContent = 'Total Expenses: $' + totalExpenses.toFixed(2);
+    }
+    
+    tbodyInv.querySelectorAll('input').forEach(input => {
+      input.addEventListener('input', recalcInvoiceTotals);
+    });
+    
+    recalcInvoiceTotals();
   }
 
   // --- Summary Extraction ---
@@ -361,7 +442,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // --- Utility Functions ---
   function formatNumber(num) {
-    return num % 1 === 0 ? num.toString() : num.toFixed(2);
+    // Updated: Show three decimal fractions for non-integer values.
+    return num % 1 === 0 ? num.toString() : num.toFixed(3);
   }
   function formatList(itemsSet) {
     return Array.from(itemsSet).join(', ');
@@ -404,82 +486,71 @@ document.addEventListener('DOMContentLoaded', () => {
       tbody.appendChild(tr);
     });
   }
-// --- Excel Download Function ---
-function downloadExcel(data, fileName = "aggregated.xlsx") {
-  // Convert JSON data to a worksheet
-  const worksheet = XLSX.utils.json_to_sheet(data);
 
-  const colWidths = [];
-  const headers = Object.keys(data[0]);
-  headers.forEach((header, i) => {
+  // --- Excel Download Function ---
+  function downloadExcel(data, fileName = "aggregated.xlsx") {
+    const worksheet = XLSX.utils.json_to_sheet(data);
+    const colWidths = [];
+    const headers = Object.keys(data[0]);
+    headers.forEach((header) => {
       let maxLen = header.length;
       data.forEach(row => {
-          const val = row[header] ? row[header].toString() : "";
-          if (val.length > maxLen) {
-              maxLen = val.length;
-          }
+        const val = row[header] ? row[header].toString() : "";
+        if (val.length > maxLen) {
+          maxLen = val.length;
+        }
       });
       colWidths.push({ wch: maxLen + 2 });
-  });
-  worksheet["!cols"] = colWidths;
-
-  // Apply header styles
-  if (worksheet["!ref"]) {
+    });
+    worksheet["!cols"] = colWidths;
+    if (worksheet["!ref"]) {
       const range = XLSX.utils.decode_range(worksheet["!ref"]);
       for (let c = range.s.c; c <= range.e.c; c++) {
-          const cellAddress = { r: 0, c: c }; // Header row
-          const cellRef = XLSX.utils.encode_cell(cellAddress);
-          if (worksheet[cellRef]) {
-              worksheet[cellRef].s = {
-                  font: { bold: true },
-                  fill: { patternType: "solid", fgColor: { rgb: "D3D3D3" } }
-              };
-          }
+        const cellAddress = { r: 0, c: c };
+        const cellRef = XLSX.utils.encode_cell(cellAddress);
+        if (worksheet[cellRef]) {
+          worksheet[cellRef].s = {
+            font: { bold: true },
+            fill: { patternType: "solid", fgColor: { rgb: "D3D3D3" } }
+          };
+        }
       }
-  }
-
-  // Apply status styles (assuming status is in the 8th column, index 7)
-  if (worksheet["!ref"]) {
+    }
+    if (worksheet["!ref"]) {
       const range = XLSX.utils.decode_range(worksheet["!ref"]);
-      for (let r = 1; r <= range.e.r; r++) { // Start from row 1 to skip header
-          const cellAddress = { r: r, c: 7 }; // 0-based index for status column
-          const cellRef = XLSX.utils.encode_cell(cellAddress);
-          const cell = worksheet[cellRef];
-          // Ensure the cell exists and has a value
-          if (cell && cell.v) {
-              const statusVal = cell.v.toString().toLowerCase(); // Get status value in lowercase
-              let fillColor = "";
-              if (statusVal === "critical") fillColor = "FF0000"; // Red
-              else if (statusVal === "moderate") fillColor = "FFA500"; // Orange
-              else if (statusVal === "normal") fillColor = "00FF00"; // Green
-
-              // Apply the fill color if provided
-              if (fillColor) {
-                  cell.s = {
-                      fill: {
-                          patternType: "solid",
-                          fgColor: { rgb: fillColor }
-                      }
-                  };
+      for (let r = 1; r <= range.e.r; r++) {
+        const cellAddress = { r: r, c: 7 };
+        const cellRef = XLSX.utils.encode_cell(cellAddress);
+        const cell = worksheet[cellRef];
+        if (cell && cell.v) {
+          const statusVal = cell.v.toString().toLowerCase();
+          let fillColor = "";
+          if (statusVal === "critical") fillColor = "FF0000";
+          else if (statusVal === "moderate") fillColor = "FFA500";
+          else if (statusVal === "normal") fillColor = "00FF00";
+          if (fillColor) {
+            cell.s = {
+              fill: {
+                patternType: "solid",
+                fgColor: { rgb: fillColor }
               }
+            };
           }
+        }
       }
+    }
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Summary");
+    const wbout = XLSX.write(workbook, { bookType: "xlsx", type: "array", cellStyles: true });
+    const blob = new Blob([wbout], { type: "application/octet-stream" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   }
 
-  // Create a new workbook and append the worksheet
-  const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, "Summary");
-  const wbout = XLSX.write(workbook, { bookType: "xlsx", type: "array", cellStyles: true });
-  const blob = new Blob([wbout], { type: "application/octet-stream" });
-  const link = document.createElement("a");
-  link.href = URL.createObjectURL(blob);
-  link.download = fileName;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-}
-
-  // Add event listener to download button
   downloadBtn.addEventListener("click", () => {
     if (aggregatedData && aggregatedData.length > 0) {
       downloadExcel(aggregatedData);
@@ -487,4 +558,138 @@ function downloadExcel(data, fileName = "aggregated.xlsx") {
       alert("No data available to download. Please process a file first.");
     }
   });
+
+  // --- Donut Chart (Dashboard Card) Setup ---
+
+  // Create chart with dynamic labels and series.
+  function initChart(labels, series) {
+    const options = {
+      series: series,
+      colors: ["#1C64F2", "#16BDCA", "#FDBA8C", "#E74694", "#a0aec0", "#f56565", "#68d391", "#ecc94b"],
+      chart: {
+        height: 500,  // Default height (adjust as needed)
+        width: "100%", // Use full available width
+        type: "donut",
+      },
+      stroke: {
+        colors: ["transparent"],
+      },
+      plotOptions: {
+        pie: {
+          donut: {
+            labels: {
+              show: true,
+              name: {
+                show: true,
+                fontFamily: "Inter, sans-serif",
+                offsetY: 20,
+              },
+              total: {
+                showAlways: true,
+                show: true,
+                label: "Total Expenses",
+                fontFamily: "Inter, sans-serif",
+                formatter: function (w) {
+                  const sum = w.globals.seriesTotals.reduce((a, b) => a + b, 0);
+                  return '$' + sum.toFixed(2);
+                },
+              },
+              value: {
+                show: true,
+                fontFamily: "Inter, sans-serif",
+                offsetY: -20,
+                formatter: function (value) {
+                  return '$' + value.toFixed(2);
+                },
+              },
+            },
+            size: "80%",
+          },
+        },
+      },
+      grid: {
+        padding: {
+          top: -2,
+        },
+      },
+      labels: labels,
+      dataLabels: {
+        enabled: false,
+      },
+      legend: {
+        position: "bottom",
+        fontFamily: "Inter, sans-serif",
+      },
+      responsive: [
+        {
+          breakpoint: 768,
+          options: {
+            chart: {
+              height: 400  // Reduce height on smaller screens
+            }
+          }
+        }
+      ]
+    };
+  
+    if (chart) {
+      // Update the chart options and force a redraw (which refreshes the legend)
+      chart.updateOptions({ labels: labels, series: series }, true, true);
+    } else {
+      chart = new ApexCharts(document.getElementById("donut-chart"), options);
+      chart.render();
+    }
+  }
+  
+  
+
+  // Helper: Combine two chart data objects by summing values for matching roles.
+  function combineChartData(onsiteData, offsiteData) {
+    const combinedMap = {};
+    onsiteData.roles.forEach((role, i) => {
+      combinedMap[role] = (combinedMap[role] || 0) + onsiteData.values[i];
+    });
+    offsiteData.roles.forEach((role, i) => {
+      combinedMap[role] = (combinedMap[role] || 0) + offsiteData.values[i];
+    });
+    const roles = Object.keys(combinedMap);
+    const values = roles.map(role => combinedMap[role]);
+    return { roles, values };
+  }
+
+  // Update chart based on checkbox state.
+  function updateChart() {
+    const onsiteChecked = document.getElementById("onsite").checked;
+    const offsiteChecked = document.getElementById("offsite").checked;
+    let labels, series;
+  
+    if (onsiteChecked && !offsiteChecked) {
+      labels = chartData.onsite.roles;
+      series = chartData.onsite.values;
+    } else if (!onsiteChecked && offsiteChecked) {
+      labels = chartData.offsite.roles;
+      series = chartData.offsite.values;
+    } else {
+      const combined = combineChartData(chartData.onsite, chartData.offsite);
+      labels = combined.roles;
+      series = combined.values;
+    }
+  
+    if (chart) {
+      // Update the chart options with redrawPaths enabled (the second parameter)
+      // This forces a full redraw of the chart, including its legend.
+      chart.updateOptions({ labels: labels, series: series }, true, true);
+    } else {
+      initChart(labels, series);
+    }
+  }
+  
+  
+  
+  // Add event listeners to the checkboxes.
+  const onsiteCheckbox = document.getElementById("onsite");
+  const offsiteCheckbox = document.getElementById("offsite");
+
+  onsiteCheckbox.addEventListener("change", updateChart);
+  offsiteCheckbox.addEventListener("change", updateChart);
 });
