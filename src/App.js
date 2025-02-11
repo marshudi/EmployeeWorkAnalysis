@@ -1,5 +1,5 @@
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
-import { useState, useEffect } from "react";
+import { useState, useEffect } from "react"; // Import useState & useEffect
 import './App.css';
 import Home from './Components/Home';
 import Nav from './Components/Nav';
@@ -34,9 +34,9 @@ function App() {
   useEffect(() => {
     const handleScroll = () => {
       if (window.scrollY > 50) {
-        setIsScrolled(true);
+        setIsScrolled(true); // Shrink navbar when scrolled down
       } else {
-        setIsScrolled(false);
+        setIsScrolled(false); // Return to normal size when at the top
       }
     };
 
@@ -45,13 +45,16 @@ function App() {
   }, []);
 
   return (
-    <Router basename="/EmployeeWorkAnalysis"> {/* ✅ Add `basename` */}
-      <div className="flex flex-col min-h-screen">
+    <Router>
+      <div className="flex flex-col min-h-screen"> {/* Ensures footer stays at bottom */}
+
+        {/* Navigation Bar with Darker Background on Scroll */}
         <div className={`fixed top-0 w-full transition-all duration-300 z-50 
           ${isScrolled ? "h-12 bg-gray-800 dark:bg-gray-900 shadow-md" : "h-20 bg-white/80 dark:bg-gray-900/80 shadow-lg backdrop-blur-lg"}`}>
           <Nav />
         </div>
 
+        {/* Add padding to prevent content from being hidden under fixed navbar */}
         <div className={isScrolled ? "pt-14" : "pt-24"}>
           <Routes>
             <Route path="/" element={<Home />} />
@@ -78,6 +81,7 @@ function App() {
             </span>
           </div>
         </footer>
+
       </div>
     </Router>
   );

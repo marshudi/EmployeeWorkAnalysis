@@ -1,7 +1,7 @@
 {
-  "homepage": "https://marshudi.github.io/EmployeeWorkAnalysis/",
   "name": "client",
   "version": "0.1.0",
+  "homepage": "https://marshudi.github.io/EmployeeWorkAnalysis/",
   "private": true,
   "dependencies": {
     "apexcharts": "^4.4.0",
