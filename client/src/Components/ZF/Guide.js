@@ -1,11 +1,11 @@
 import React from 'react';
 
-const  GuideVFOM=()=> {
+const  GuideZF=()=> {
   return (
     <>
-    GuideVFOM
+    GuideZF
     </>
   );
 }
 
-export default GuideVFOM;
+export default GuideZF;

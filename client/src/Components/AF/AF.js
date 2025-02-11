@@ -1,11 +1,11 @@
 import React from 'react';
 
-const  VFOM=()=> {
+const  APIFactory=()=> {
   return (
     <>
-    VFOM
+    APIFactory
     </>
   );
 }
 
-export default VFOM;
+export default APIFactory;
