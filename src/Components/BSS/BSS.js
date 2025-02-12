@@ -27,9 +27,9 @@ const BSS = () => {
     'qa lead': 'qa lead',
     'qa engineer': 'senior qa',
     'senior qa': 'senior qa',
-    'qa / test': ['qa / test','qa','test'],
-    'test': ['qa / test','qa','test'],
-    'qa': ['qa / test','qa','test'],
+    'qa / test': ['qa / test', 'qa', 'test'],
+    'test': ['qa / test', 'qa', 'test'],
+    'qa': ['qa / test', 'qa', 'test'],
     'sr developer': ['developer / sr developer', 'sr developer', 'developer'],
     'developer': ['developer / sr developer', 'sr developer', 'developer'],
     'developer / sr developer': ['developer / sr developer', 'sr developer', 'developer'],
@@ -39,7 +39,7 @@ const BSS = () => {
     'solution architect': 'solution architect / business analyst / dev lead / integration lead',
     'dev lead': 'solution architect / business analyst / dev lead / integration lead',
     'integration lead': 'solution architect / business analyst / dev lead / integration lead',
-    'solution architect / business analyst / dev lead / integration lead': ['business analyst','solution architect','dev lead','integration lead']
+    'solution architect / business analyst / dev lead / integration lead': ['business analyst', 'solution architect', 'dev lead', 'integration lead']
   };
 
   const INVOICE_ITEMS = [
@@ -67,6 +67,7 @@ const BSS = () => {
   let roleCounts = {};
   let roleLocationCounts = {};
   let roleLocationManDays = {};
+  let maximumHoursData = []; // Stores max hours and occurrence per employee
   let chart = null; // ApexCharts instance
   let chartData = { onsite: { roles: [], values: [] }, offsite: { roles: [], values: [] } };
 
@@ -89,6 +90,9 @@ const BSS = () => {
   const expenseReportBodyRef = useRef(null);
   const reportContainerRef = useRef(null);
   const exportReportBtnRef = useRef(null);
+  // New Refs for Maximum Hours Table
+  const maxHoursTableRef = useRef(null);
+  const maxHoursContainerRef = useRef(null);
 
   // --------------------------
   // Helper Functions
@@ -183,14 +187,18 @@ const BSS = () => {
           locationTypes: new Set(),
           roles: new Set(),
           originalRoles: new Set(),
-          projects: new Set()
+          projects: new Set(),
+          hoursByDate: {} // to track total hours per date
         });
       }
       const group = groupMap.get(empName);
       const hours = parseFloat(getValue(columnMap.hours)) || 0;
       group.totalHours += hours;
       const date = getValue(columnMap.date);
-      if (date) group.days.add(date);
+      if (date) {
+        group.days.add(date);
+        group.hoursByDate[date] = (group.hoursByDate[date] || 0) + hours;
+      }
       const desc = getValue(columnMap.description);
       if (desc) group.descriptions.add(desc);
 
@@ -223,14 +231,33 @@ const BSS = () => {
     });
 
     const output = [];
+    const maximumHoursData = []; // to store max hours and occurrence per employee
     groupMap.forEach(group => {
       const totalDays = group.days.size || 1;
       const avgHours = group.totalHours / totalDays;
       const manDays = group.totalHours / 8;
       const status = getStatus(avgHours);
+      
+      // Calculate the maximum hours in any one day and count occurrences
+      let maxHoursNum = 0;
+      let maxCount = 0;
+      if (Object.keys(group.hoursByDate).length > 0) {
+        maxHoursNum = Math.max(...Object.values(group.hoursByDate));
+        maxCount = Object.values(group.hoursByDate).filter(val => val === maxHoursNum).length;
+      }
+      maximumHoursData.push({
+        employeeName: group.employeeName,
+        maxHours: maxHoursNum,
+        maxHoursFormatted: formatNumber(maxHoursNum),
+        maxCount: maxCount,
+        totalWorkingDays: group.days.size // total unique days worked
+      });
+
+      // Add "daysWorked" to aggregated row
       output.push({
         manDays: formatNumber(manDays),
         employeeName: group.employeeName,
+        daysWorked: group.days.size,
         location: formatList(group.locationTypes),
         role: formatList(group.originalRoles),
         project: formatList(group.projects),
@@ -251,12 +278,17 @@ const BSS = () => {
       });
     });
 
+    // Sort the maximum hours table data from highest to lowest
+    maximumHoursData.sort((a, b) => b.maxHours - a.maxHours);
+
+    // Also sort aggregated data descending by total hours
     output.sort((a, b) => parseFloat(b.totalHours) - parseFloat(a.totalHours));
     return {
       aggregatedData: output,
       roleCounts: roleCounts,
       roleLocationCounts: roleLocationCounts,
-      roleLocationManDays: roleLocationManDays
+      roleLocationManDays: roleLocationManDays,
+      maximumHoursData: maximumHoursData
     };
   }
 
@@ -265,7 +297,7 @@ const BSS = () => {
 
     // Save the uploaded file's base name (without extension)
     uploadedFileNameBase = file.name.replace(/\.[^/.]+$/, "");
-    dataTableBodyRef.current.innerHTML = `<tr><td colspan="10" class="text-center py-4">Processing file, please wait...</td></tr>`;
+    dataTableBodyRef.current.innerHTML = `<tr><td colspan="11" class="text-center py-4">Processing file, please wait...</td></tr>`;
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
@@ -314,6 +346,7 @@ const BSS = () => {
         roleCounts = processed.roleCounts;
         roleLocationCounts = processed.roleLocationCounts;
         roleLocationManDays = processed.roleLocationManDays;
+        maximumHoursData = processed.maximumHoursData;
 
         createInvoiceTableDynamic(roleLocationCounts, roleLocationManDays);
         renderTable(aggregatedData);
@@ -352,9 +385,12 @@ const BSS = () => {
         // Generate the Expense Report Table (Ranking by Role)
         generateExpenseReport();
 
+        // Render the Maximum Hours Table (New)
+        renderMaxHoursTable(maximumHoursData);
+
       } catch (error) {
         console.error('Error processing file:', error);
-        dataTableBodyRef.current.innerHTML = `<tr><td colspan="10" class="text-center py-4 text-red-600">Error processing file: ${error.message}</td></tr>`;
+        dataTableBodyRef.current.innerHTML = `<tr><td colspan="11" class="text-center py-4 text-red-600">Error processing file: ${error.message}</td></tr>`;
       }
     };
     reader.readAsArrayBuffer(file);
@@ -368,8 +404,8 @@ const BSS = () => {
     const table = document.createElement('table');
     table.className = 'w-full table-auto border-collapse';
     const thead = document.createElement('thead');
-    thead.innerHTML = `
-      <tr class="border-b">
+    thead.innerHTML = 
+      `<tr class="border-b">
         <th class="px-4 py-2 text-left font-medium text-gray-700">Position</th>
         <th class="px-4 py-2 text-left font-medium text-gray-700">Location</th>
         <th class="px-4 py-2 text-left font-medium text-gray-700">Quantity</th>
@@ -403,8 +439,8 @@ const BSS = () => {
 
         const tr = document.createElement('tr');
         tr.className = 'border-b';
-        tr.innerHTML = `
-          <td class="px-4 py-2 font-medium">${displayRole}</td>
+        tr.innerHTML = 
+          `<td class="px-4 py-2 font-medium">${displayRole}</td>
           <td class="px-4 py-2">${locType.charAt(0).toUpperCase() + locType.slice(1)}</td>
           <td class="px-4 py-2">
             <input type="number" class="quantity-input w-full px-3 py-2 border rounded-md" readonly value="${qty}">
@@ -423,8 +459,7 @@ const BSS = () => {
           <td class="px-4 py-2">
             <input type="number" class="discount-input w-full px-3 py-2 border rounded-md" placeholder="Discount %" min="0" max="100" step="0.01" value="0">
           </td>
-          <td class="px-4 py-2 total-price-cell text-right font-medium">${totalPrice.toFixed(2)}</td>
-        `;
+          <td class="px-4 py-2 total-price-cell text-right font-medium">${totalPrice.toFixed(2)}</td>`;
         tbodyInv.appendChild(tr);
       }
     });
@@ -472,35 +507,59 @@ const BSS = () => {
   function renderTable(data) {
     dataTableBodyRef.current.innerHTML = '';
     if (data.length === 0) {
-      dataTableBodyRef.current.innerHTML = `<tr><td colspan="10" class="text-center py-4">No records found.</td></tr>`;
+      dataTableBodyRef.current.innerHTML = `<tr><td colspan="11" class="text-center py-4">No records found.</td></tr>`;
       return;
     }
     data.forEach(row => {
       const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td class="px-6 py-4 text-right whitespace-nowrap">${row.manDays}</td>
-        <td class="px-6 py-4 text-left whitespace-nowrap">${row.employeeName}</td>
-        <td class="px-6 py-4 text-left whitespace-nowrap">${row.location}</td>
-        <td class="px-6 py-4 text-left whitespace-nowrap">${row.role}</td>
-        <td class="px-6 py-4 text-left whitespace-nowrap">${row.project}</td>
-        <td class="px-6 py-4 text-right whitespace-nowrap">${row.totalHours}</td>
-        <td class="px-6 py-4 text-right whitespace-nowrap">${row.avgHours}</td>
-        <td class="px-6 py-4 text-left whitespace-nowrap">
-          <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-            row.status.toLowerCase() === 'critical'
-              ? 'bg-red-100 text-red-800'
-              : row.status.toLowerCase() === 'moderate'
-              ? 'bg-yellow-100 text-yellow-800'
-              : 'bg-green-100 text-green-800'
-          }">
-            ${row.status}
-          </span>
-        </td>
-        <td class="px-6 py-4 text-left whitespace-nowrap">${row.summary}</td>
-        <td class="px-6 py-4 text-left whitespace-nowrap">${row.description}</td>
-      `;
+      tr.innerHTML = 
+        `<td class="px-6 py-4 text-right whitespace-nowrap">${row.manDays}</td>
+         <td class="px-6 py-4 text-left whitespace-nowrap">${row.employeeName}</td>
+         <td class="px-6 py-4 text-right whitespace-nowrap">${row.daysWorked}</td>
+         <td class="px-6 py-4 text-left whitespace-nowrap">${row.location}</td>
+         <td class="px-6 py-4 text-left whitespace-nowrap">${row.role}</td>
+         <td class="px-6 py-4 text-left whitespace-nowrap">${row.project}</td>
+         <td class="px-6 py-4 text-right whitespace-nowrap">${row.totalHours}</td>
+         <td class="px-6 py-4 text-right whitespace-nowrap">${row.avgHours}</td>
+         <td class="px-6 py-4 text-center whitespace-nowrap">
+           <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+             row.status.toLowerCase() === 'critical'
+               ? 'bg-red-100 text-red-800'
+               : row.status.toLowerCase() === 'moderate'
+               ? 'bg-yellow-100 text-yellow-800'
+               : 'bg-green-100 text-green-800'
+           }">
+             ${row.status}
+           </span>
+         </td>
+         <td class="px-6 py-4 text-left whitespace-nowrap">${row.summary}</td>
+         <td class="px-6 py-4 text-left whitespace-nowrap">${row.description}</td>`;
       dataTableBodyRef.current.appendChild(tr);
     });
+  }
+
+  // --------------------------
+  // Render Maximum Hours Table (New)
+  // --------------------------
+  function renderMaxHoursTable(data) {
+    if (!maxHoursTableRef.current) return;
+    maxHoursTableRef.current.innerHTML = '';
+    if (data.length === 0) {
+      maxHoursTableRef.current.innerHTML = `<tr><td colspan="4" class="text-center py-4">No records found.</td></tr>`;
+      return;
+    }
+    data.forEach(row => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td class="px-6 py-4 text-left whitespace-nowrap">${row.employeeName}</td>
+        <td class="px-6 py-4 text-right whitespace-nowrap">${row.maxHoursFormatted}</td>
+        <td class="px-6 py-4 text-right whitespace-nowrap">${row.maxCount}</td>
+        <td class="px-6 py-4 text-right whitespace-nowrap">${row.totalWorkingDays}</td>
+      `;
+      maxHoursTableRef.current.appendChild(tr);
+    });
+    // Unhide the container once data is rendered.
+    maxHoursContainerRef.current.classList.remove("hidden");
   }
 
   // --------------------------
@@ -686,13 +745,12 @@ const BSS = () => {
       reportData.forEach(item => {
         const tr = document.createElement("tr");
         tr.className = "hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer";
-        tr.innerHTML = `
-          <td class="px-6 py-4 whitespace-nowrap">${item.rank}</td>
-          <td class="px-6 py-4 whitespace-nowrap">${item.role}</td>
-          <td class="px-6 py-4 whitespace-nowrap text-right">$${item.onsite.toFixed(2)}</td>
-          <td class="px-6 py-4 whitespace-nowrap text-right">$${item.offsite.toFixed(2)}</td>
-          <td class="px-6 py-4 whitespace-nowrap text-right">$${item.total.toFixed(2)}</td>
-        `;
+        tr.innerHTML = 
+          `<td class="px-6 py-4 whitespace-nowrap">${item.rank}</td>
+           <td class="px-6 py-4 whitespace-nowrap">${item.role}</td>
+           <td class="px-6 py-4 whitespace-nowrap text-right">$${item.onsite.toFixed(2)}</td>
+           <td class="px-6 py-4 whitespace-nowrap text-right">$${item.offsite.toFixed(2)}</td>
+           <td class="px-6 py-4 whitespace-nowrap text-right">$${item.total.toFixed(2)}</td>`;
         tbodyReport.appendChild(tr);
       });
       reportContainerRef.current.classList.remove("hidden");
@@ -855,8 +913,6 @@ const BSS = () => {
   // --------------------------
   return (
     <div className="bg-gray-100">
-
-
       <div className="container mx-auto px-4 lg:px-10 py-6 bg-white shadow-lg rounded-lg mt-10">
         <h1 className="text-3xl font-bold text-center text-gray-800 mb-6">BSS Employee Work Analysis</h1>
 
@@ -874,6 +930,7 @@ const BSS = () => {
                 <tr>
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Man Days</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Employee Name</th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Days Worked</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Location</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Project</th>
@@ -974,6 +1031,25 @@ const BSS = () => {
             <button id="export-report-btn" ref={exportReportBtnRef} className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600">Export Full Report as XLSX</button>
           </div>
         </div>
+
+        {/* Maximum Hours Table (New) */}
+        <div id="max-hours-container" ref={maxHoursContainerRef} className="mt-10 hidden">
+          <h2 className="text-2xl font-bold mb-6">Maximum Hours Per Day by Employee</h2>
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Employee Name</th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Max Hours in a Day</th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Max Hours Occurred</th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Total Working Days</th>
+                </tr>
+              </thead>
+              <tbody id="max-hours-table-body" ref={maxHoursTableRef} className="bg-white divide-y divide-gray-200"></tbody>
+            </table>
+          </div>
+        </div>
+
       </div>
     </div>
   );
