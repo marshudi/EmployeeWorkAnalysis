@@ -21,8 +21,7 @@
         "average hours per day",
         "export report",
         "file format",
-        "site guide",
-        "default"
+        "site guide"
     ],
 
     "hello": ["Hi there! How can I help you with your work analysis?", "Hello! Need help with employee data?", "Hey! Let's analyze some work data."],
