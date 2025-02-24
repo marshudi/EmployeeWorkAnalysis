@@ -1,0 +1,9 @@
+{
+    "hello": ["Hi there!", "Hello!", "Hey! How can I assist you?"],
+    "how are you": ["I'm just a bot, but I'm doing great!", "I'm fine, thanks!"],
+    "bye": ["Goodbye!", "See you later!", "Take care!"],
+    "help": ["I can answer questions about work analysis. Try asking: 'What is work analysis?'"],
+    "what is work analysis": ["Work analysis is the process of examining job tasks and responsibilities to improve productivity."],
+    "default": ["I'm not sure how to respond to that. Can you try another question?"]
+  }
+  

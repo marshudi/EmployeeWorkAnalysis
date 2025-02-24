@@ -391,20 +391,14 @@ const BSS = () => {
             ? aggregatedOffsite[role] * PRICE_MAPPING[role].offsite
             : aggregatedOffsite[role];
         });
+        // Update the chartData state
         setChartData({
-          onsite: {
-            roles: Object.keys(aggregatedExpenseOnsite),
-            values: Object.values(aggregatedExpenseOnsite),
-          },
-          offsite: {
-            roles: Object.keys(aggregatedExpenseOffsite),
-            values: Object.values(aggregatedExpenseOffsite),
-          },
+          onsite: { roles: Object.keys(aggregatedExpenseOnsite), values: Object.values(aggregatedExpenseOnsite) },
+          offsite: { roles: Object.keys(aggregatedExpenseOffsite), values: Object.values(aggregatedExpenseOffsite) },
         });
 
         chartContainerRef.current.classList.remove("hidden");
         updateChart();
-        // Generate the expense report directly from roleLocationManDays
         generateExpenseReport();
         renderMaxHoursTable(maximumHoursData);
       } catch (error) {
@@ -757,52 +751,30 @@ const BSS = () => {
   // --------------------------
   // Expense Report Generation and Full Report Export
   // --------------------------
-  // Revised generateExpenseReport computes the expense report directly from roleLocationManDays.
   function generateExpenseReport() {
-    if (!roleLocationManDays || Object.keys(roleLocationManDays).length === 0) {
-      console.warn("No roleLocationManDays data available for expense report.");
-      return [];
-    }
-    const aggregatedOnsite = {};
-    const aggregatedOffsite = {};
-    Object.keys(roleLocationManDays).forEach((key) => {
-      const [role, location] = key.split("|");
-      if (location === "onsite") {
-        aggregatedOnsite[role] = (aggregatedOnsite[role] || 0) + roleLocationManDays[key];
-      } else if (location === "offsite") {
-        aggregatedOffsite[role] = (aggregatedOffsite[role] || 0) + roleLocationManDays[key];
-      }
-    });
-    const aggregatedExpenseOnsite = {};
-    Object.keys(aggregatedOnsite).forEach((role) => {
-      aggregatedExpenseOnsite[role] = PRICE_MAPPING[role]
-        ? aggregatedOnsite[role] * PRICE_MAPPING[role].onsite
-        : aggregatedOnsite[role];
-    });
-    const aggregatedExpenseOffsite = {};
-    Object.keys(aggregatedOffsite).forEach((role) => {
-      aggregatedExpenseOffsite[role] = PRICE_MAPPING[role]
-        ? aggregatedOffsite[role] * PRICE_MAPPING[role].offsite
-        : aggregatedOffsite[role];
-    });
     const combinedExpense = {};
-    Object.keys(aggregatedExpenseOnsite).forEach((role) => {
-      combinedExpense[role] = { onsite: aggregatedExpenseOnsite[role] || 0, offsite: 0, total: 0 };
-    });
-    Object.keys(aggregatedExpenseOffsite).forEach((role) => {
+    // Sum expenses from onsite data
+    chartDataState.onsite.roles.forEach((role, i) => {
       combinedExpense[role] = combinedExpense[role] || { onsite: 0, offsite: 0, total: 0 };
-      combinedExpense[role].offsite = aggregatedExpenseOffsite[role] || 0;
+      combinedExpense[role].onsite += chartDataState.onsite.values[i];
     });
+    // Sum expenses from offsite data
+    chartDataState.offsite.roles.forEach((role, i) => {
+      combinedExpense[role] = combinedExpense[role] || { onsite: 0, offsite: 0, total: 0 };
+      combinedExpense[role].offsite += chartDataState.offsite.values[i];
+    });
+    // Calculate total for each role
     for (let role in combinedExpense) {
       combinedExpense[role].total =
         combinedExpense[role].onsite + combinedExpense[role].offsite;
     }
     let reportData = Object.keys(combinedExpense).map((role) => ({
-      role,
+      role: role,
       onsite: combinedExpense[role].onsite,
       offsite: combinedExpense[role].offsite,
       total: combinedExpense[role].total,
     }));
+    // Sort descending by total expense
     reportData.sort((a, b) => b.total - a.total);
     reportData.forEach((item, index) => {
       item.rank = index + 1;
@@ -840,7 +812,7 @@ const BSS = () => {
         if (infoSheet[cellRef]) {
           infoSheet[cellRef].s = {
             font: { bold: true, color: { rgb: "000000" } },
-            fill: { patternType: "solid", fgColor: { rgb: "FFD700" } },
+            fill: { patternType: "solid", fgColor: { rgb: "FFD700" } }
           };
         }
       }
@@ -856,7 +828,7 @@ const BSS = () => {
         if (aggSheet[cellRef]) {
           aggSheet[cellRef].s = {
             font: { bold: true, color: { rgb: "000000" } },
-            fill: { patternType: "solid", fgColor: { rgb: "D3D3D3" } },
+            fill: { patternType: "solid", fgColor: { rgb: "D3D3D3" } }
           };
         }
       }
@@ -873,7 +845,7 @@ const BSS = () => {
         if (expSheet[cellRef]) {
           expSheet[cellRef].s = {
             font: { bold: true, color: { rgb: "000000" } },
-            fill: { patternType: "solid", fgColor: { rgb: "B0E0E6" } },
+            fill: { patternType: "solid", fgColor: { rgb: "B0E0E6" } }
           };
         }
       }
@@ -1000,14 +972,8 @@ const BSS = () => {
       aggregatedExpenseOffsite,
     });
     setChartData({
-      onsite: {
-        roles: Object.keys(aggregatedExpenseOnsite),
-        values: Object.values(aggregatedExpenseOnsite),
-      },
-      offsite: {
-        roles: Object.keys(aggregatedExpenseOffsite),
-        values: Object.values(aggregatedExpenseOffsite),
-      },
+      onsite: { roles: Object.keys(aggregatedExpenseOnsite), values: Object.values(aggregatedExpenseOnsite) },
+      offsite: { roles: Object.keys(aggregatedExpenseOffsite), values: Object.values(aggregatedExpenseOffsite) },
     });
   }, [roleLocationManDays]);
 
@@ -1017,26 +983,12 @@ const BSS = () => {
   return (
     <div className="bg-gray-100">
       <div className="container mx-auto px-4 lg:px-10 py-6 bg-white shadow-lg rounded-lg mt-10">
-        <h1 className="text-3xl font-bold text-center text-gray-800 mb-6">
-          BSS Employee Work Analysis
-        </h1>
+        <h1 className="text-3xl font-bold text-center text-gray-800 mb-6">BSS Employee Work Analysis</h1>
 
         {/* File Upload Section */}
-        <div
-          id="drop-zone"
-          ref={dropZoneRef}
-          className="border-2 border-dashed border-gray-400 p-10 rounded-lg text-center cursor-pointer hover:border-gray-600 transition-colors"
-        >
-          <span className="text-gray-600">
-            Drag &amp; Drop Excel/CSV File Here or Click to Upload
-          </span>
-          <input
-            type="file"
-            id="file-input"
-            ref={fileInputRef}
-            accept=".csv,.xlsx,.xls"
-            className="hidden"
-          />
+        <div id="drop-zone" ref={dropZoneRef} className="border-2 border-dashed border-gray-400 p-10 rounded-lg text-center cursor-pointer hover:border-gray-600 transition-colors">
+          <span className="text-gray-600">Drag &amp; Drop Excel/CSV File Here or Click to Upload</span>
+          <input type="file" id="file-input" ref={fileInputRef} accept=".csv,.xlsx,.xls" className="hidden" />
         </div>
 
         {/* Data Table Section */}
@@ -1045,56 +997,24 @@ const BSS = () => {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Man Days
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Employee Name
-                  </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Days Worked
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Location
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Role
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Project
-                  </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Total Hours
-                  </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Avg Hours/Day
-                  </th>
-                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Status
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Summary
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Description
-                  </th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Man Days</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Employee Name</th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Days Worked</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Location</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Project</th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Total Hours</th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Avg Hours/Day</th>
+                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Summary</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
                 </tr>
               </thead>
-              <tbody
-                id="data-table-body"
-                ref={dataTableBodyRef}
-                className="bg-white divide-y divide-gray-200"
-              ></tbody>
+              <tbody id="data-table-body" ref={dataTableBodyRef} className="bg-white divide-y divide-gray-200"></tbody>
             </table>
           </div>
           <div className="mt-4 text-center">
-            <button
-              id="download-btn"
-              ref={downloadBtnRef}
-              className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-            >
-              Download Excel
-            </button>
+            <button id="download-btn" ref={downloadBtnRef} className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">Download Excel</button>
           </div>
         </div>
 
@@ -1102,39 +1022,17 @@ const BSS = () => {
         <div id="invoice-container" ref={invoiceContainerRef} className="mt-10"></div>
 
         {/* Dashboard Card (Donut Chart & Location Toggle) */}
-        <div
-          id="chart-container"
-          ref={chartContainerRef}
-          className="max-w-4xl mx-auto bg-white rounded-lg shadow-sm dark:bg-gray-800 p-4 md:p-6 mt-10 hidden"
-        >
+        <div id="chart-container" ref={chartContainerRef} className="max-w-4xl mx-auto bg-white rounded-lg shadow-sm dark:bg-gray-800 p-4 md:p-6 mt-10 hidden">
           <div className="flex justify-between mb-3">
             <div className="flex justify-center items-center">
-              <h5 className="text-xl font-bold leading-none text-gray-900 dark:text-white pe-1">
-                Employee Work Analysis
-              </h5>
-              <svg
-                data-popover-target="chart-info"
-                data-popover-placement="bottom"
-                className="w-3.5 h-3.5 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white cursor-pointer ms-1"
-                xmlns="http://www.w3.org/2000/svg"
-                fill="currentColor"
-                viewBox="0 0 20 20"
-              >
-                <path d="M10 .5a9.5 9.5 0 1 0 9.5 9.5A9.51 9.51 0 0 0 10 .5Zm0 16a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3Zm1-5.034V12a1 1 0 0 1-2 0v-1.418a1 1 0 0 1 1.038-.999 1.436 1.436 0 0 0 1.488-1.441 1.501 1.501 0 1 0-3-.116.986.986 0 0 1-1.037.961 1 1 0 0 1-.96-1.037A3.5 3.5 0 1 1 11 11.466Z" />
+              <h5 className="text-xl font-bold leading-none text-gray-900 dark:text-white pe-1">Employee Work Analysis</h5>
+              <svg data-popover-target="chart-info" data-popover-placement="bottom" className="w-3.5 h-3.5 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white cursor-pointer ms-1" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M10 .5a9.5 9.5 0 1 0 9.5 9.5A9.51 9.51 0 0 0 10 .5Zm0 16a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3Zm1-5.034V12a1 1 0 0 1-2 0v-1.418a1 1 0 0 1 1.038-.999 1.436 1.436 0 0 0 1.488-1.441 1.501 1.501 0 1 0-3-.116.986.986 0 0 1-1.037.961 1 1 0 0 1-.96-1.037A3.5 3.5 0 1 1 11 11.466Z"/>
               </svg>
-              <div
-                data-popover
-                id="chart-info"
-                role="tooltip"
-                className="absolute z-10 invisible inline-block text-sm text-gray-500 transition-opacity duration-300 bg-white border border-gray-200 rounded-lg shadow-xs opacity-0 w-72 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-400"
-              >
+              <div data-popover id="chart-info" role="tooltip" className="absolute z-10 invisible inline-block text-sm text-gray-500 transition-opacity duration-300 bg-white border border-gray-200 rounded-lg shadow-xs opacity-0 w-72 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-400">
                 <div className="p-3 space-y-2">
-                  <h3 className="font-semibold text-gray-900 dark:text-white">
-                    Employee Work Analysis
-                  </h3>
-                  <p>
-                    This chart represents the distribution of man‑days by role (position) based on location type.
-                  </p>
+                  <h3 className="font-semibold text-gray-900 dark:text-white">Employee Work Analysis</h3>
+                  <p>This chart represents the distribution of man‑days by role (position) based on location type.</p>
                 </div>
                 <div data-popper-arrow></div>
               </div>
@@ -1154,10 +1052,7 @@ const BSS = () => {
                   className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded-sm focus:ring-blue-500"
                   onChange={updateChart}
                 />
-                <label
-                  htmlFor="onsite"
-                  className="ms-2 text-sm font-medium text-gray-900 dark:text-gray-300"
-                >
+                <label htmlFor="onsite" className="ms-2 text-sm font-medium text-gray-900 dark:text-gray-300">
                   On‑Site
                 </label>
               </div>
@@ -1171,10 +1066,7 @@ const BSS = () => {
                   className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded-sm focus:ring-blue-500"
                   onChange={updateChart}
                 />
-                <label
-                  htmlFor="offsite"
-                  className="ms-2 text-sm font-medium text-gray-900 dark:text-gray-300"
-                >
+                <label htmlFor="offsite" className="ms-2 text-sm font-medium text-gray-900 dark:text-gray-300">
                   Off‑Site
                 </label>
               </div>
@@ -1187,56 +1079,19 @@ const BSS = () => {
           {/* Optional Time-Range Dropdown */}
           <div className="grid grid-cols-1 items-center border-gray-200 border-t dark:border-gray-700 justify-between">
             <div className="flex justify-between items-center pt-5">
-              <div
-                id="lastDaysdropdown"
-                className="z-10 hidden bg-white divide-y divide-gray-100 rounded-lg shadow-sm w-44 dark:bg-gray-700"
-              >
+              <div id="lastDaysdropdown" className="z-10 hidden bg-white divide-y divide-gray-100 rounded-lg shadow-sm w-44 dark:bg-gray-700">
                 <ul className="py-2 text-sm text-gray-700 dark:text-gray-200">
-                  <li>
-                    <a href="#" className="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600">
-                      Yesterday
-                    </a>
-                  </li>
-                  <li>
-                    <a href="#" className="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600">
-                      Today
-                    </a>
-                  </li>
-                  <li>
-                    <a href="#" className="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600">
-                      Last 7 days
-                    </a>
-                  </li>
-                  <li>
-                    <a href="#" className="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600">
-                      Last 30 days
-                    </a>
-                  </li>
-                  <li>
-                    <a href="#" className="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600">
-                      Last 90 days
-                    </a>
-                  </li>
+                  <li><a href="#" className="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600">Yesterday</a></li>
+                  <li><a href="#" className="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600">Today</a></li>
+                  <li><a href="#" className="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600">Last 7 days</a></li>
+                  <li><a href="#" className="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600">Last 30 days</a></li>
+                  <li><a href="#" className="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600">Last 90 days</a></li>
                 </ul>
               </div>
-              <a
-                href="#"
-                className="uppercase text-sm font-semibold inline-flex items-center rounded-lg text-blue-600 hover:text-blue-700 dark:hover:text-blue-500 hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-2"
-              >
+              <a href="#" className="uppercase text-sm font-semibold inline-flex items-center rounded-lg text-blue-600 hover:text-blue-700 dark:hover:text-blue-500 hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-2">
                 Employee Work Analysis
-                <svg
-                  className="w-2.5 h-2.5 ms-1.5 rtl:rotate-180"
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 6 10"
-                >
-                  <path
-                    stroke="currentColor"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                    d="m1 9 4-4-4-4"
-                  />
+                <svg className="w-2.5 h-2.5 ms-1.5 rtl:rotate-180" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 6 10">
+                  <path stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="m1 9 4-4-4-4"/>
                 </svg>
               </a>
             </div>
@@ -1250,34 +1105,18 @@ const BSS = () => {
             <table id="expense-report-table" className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Rank
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Role
-                  </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    On‑Site Expense
-                  </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Off‑Site Expense
-                  </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Total Expense
-                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Rank</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">On‑Site Expense</th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Off‑Site Expense</th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Total Expense</th>
                 </tr>
               </thead>
               <tbody id="expense-report-body" ref={expenseReportBodyRef} className="bg-white divide-y divide-gray-200"></tbody>
             </table>
           </div>
           <div className="mt-4 text-center">
-            <button
-              id="export-report-btn"
-              ref={exportReportBtnRef}
-              className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600"
-            >
-              Export Full Report as XLSX
-            </button>
+            <button id="export-report-btn" ref={exportReportBtnRef} className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600">Export Full Report as XLSX</button>
           </div>
         </div>
 
@@ -1288,18 +1127,10 @@ const BSS = () => {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Employee Name
-                  </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Max Hours in a Day
-                  </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Max Hours Occurred
-                  </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Total Working Days
-                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Employee Name</th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Max Hours in a Day</th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Max Hours Occurred</th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Total Working Days</th>
                 </tr>
               </thead>
               <tbody id="max-hours-table-body" ref={maxHoursTableRef} className="bg-white divide-y divide-gray-200"></tbody>

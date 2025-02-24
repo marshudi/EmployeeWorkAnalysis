@@ -4,17 +4,8 @@ import ApexCharts from "apexcharts";
 import { AggregatedDataContext } from "../AggregatedDataContext";
 
 // --------------------------
-// Global Variables for File Info and Chart Data
+// Global Configurations
 // --------------------------
-let reportMonth = "";
-let uploadedFileNameBase = "";
-let aggregatedData = [];
-let roleCounts = {};
-let roleLocationCounts = {};
-let roleLocationManDays = {};
-let maximumHoursData = []; // Stores max hours and occurrence per employee
-let chart = null; // ApexCharts instance
-
 const HIGHLIGHT_WORDS = {
   "Scrum Master": "red",
   "Project support": "blue",
@@ -92,15 +83,19 @@ const BSS = () => {
   // Context and State
   // --------------------------
   const {
+    aggregatedData,
     setAggregatedData,
+    maximumHoursData,
     setMaximumHoursData,
+    roleCounts,
     setRoleCounts,
+    roleLocationCounts,
     setRoleLocationCounts,
+    roleLocationManDays,
     setRoleLocationManDays,
   } = useContext(AggregatedDataContext);
 
-  // Create a state variable for chartData so that setChartData is defined
-  const [chartDataState, setChartData] = useState({
+  const [chartData, setChartData] = useState({
     onsite: { roles: [], values: [] },
     offsite: { roles: [], values: [] },
   });
@@ -269,6 +264,7 @@ const BSS = () => {
       const avgHours = group.totalHours / totalDays;
       const manDays = group.totalHours / 8;
       const status = getStatus(avgHours);
+
       let maxHoursNum = 0;
       let maxCount = 0;
       if (Object.keys(group.hoursByDate).length > 0) {
@@ -282,6 +278,7 @@ const BSS = () => {
         maxCount: maxCount,
         totalWorkingDays: group.days.size,
       });
+
       output.push({
         manDays: formatNumber(manDays),
         employeeName: group.employeeName,
@@ -295,6 +292,7 @@ const BSS = () => {
         summary: extractSummary(Array.from(group.descriptions).join(" | ")),
         description: status === "Critical" ? Array.from(group.descriptions).join(" | ") : "",
       });
+
       group.roles.forEach((role) => {
         roleCounts[role] = (roleCounts[role] || 0) + 1;
         group.locationTypes.forEach((locType) => {
@@ -304,6 +302,7 @@ const BSS = () => {
         });
       });
     });
+
     maximumHoursData.sort((a, b) => b.maxHours - a.maxHours);
     output.sort((a, b) => parseFloat(b.totalHours) - parseFloat(a.totalHours));
     return {
@@ -317,8 +316,8 @@ const BSS = () => {
 
   function handleFile(file) {
     if (!file) return;
-    // Update global variables
-    uploadedFileNameBase = file.name.replace(/\.[^/.]+$/, "");
+    let reportMonth = "";
+    let uploadedFileNameBase = file.name.replace(/\.[^/.]+$/, "");
     dataTableBodyRef.current.innerHTML = `<tr><td colspan="11" class="text-center py-4">Processing file, please wait...</td></tr>`;
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -328,6 +327,7 @@ const BSS = () => {
         const firstSheetName = workbook.SheetNames[0];
         const firstSheet = workbook.Sheets[firstSheetName];
         const jsonData = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
+
         const headers = jsonData[0].map((h) =>
           h.toString().toLowerCase().replace(/[/ ]/g, "_").replace(/[^a-z0-9_]/gi, "")
         );
@@ -348,35 +348,30 @@ const BSS = () => {
             console.log("Report Month extracted:", reportMonth);
           }
         }
-        const processed = processData(jsonData);
-        aggregatedData = processed.aggregatedData;
-        roleCounts = processed.roleCounts;
-        roleLocationCounts = processed.roleLocationCounts;
-        roleLocationManDays = processed.roleLocationManDays;
-        maximumHoursData = processed.maximumHoursData;
-        // Update context with processed data
-        setAggregatedData(aggregatedData);
-        setMaximumHoursData(maximumHoursData);
-        setRoleCounts(roleCounts);
-        setRoleLocationCounts(roleLocationCounts);
-        setRoleLocationManDays(roleLocationManDays);
 
-        createInvoiceTableDynamic(roleLocationCounts, roleLocationManDays);
-        renderTable(aggregatedData);
+        const processed = processData(jsonData);
+        setAggregatedData(processed.aggregatedData);
+        setMaximumHoursData(processed.maximumHoursData);
+        setRoleCounts(processed.roleCounts);
+        setRoleLocationCounts(processed.roleLocationCounts);
+        setRoleLocationManDays(processed.roleLocationManDays);
+
+        createInvoiceTableDynamic(processed.roleLocationCounts, processed.roleLocationManDays);
+        renderTable(processed.aggregatedData);
         resultsRef.current.classList.remove("hidden");
         invoiceContainerRef.current.classList.remove("hidden");
 
         // Compute aggregated chart data as expenses
         const aggregatedOnsite = {};
         const aggregatedOffsite = {};
-        Object.keys(roleLocationManDays).forEach((key) => {
+        Object.keys(processed.roleLocationManDays).forEach((key) => {
           const parts = key.split("|");
           const role = parts[0];
           const location = parts[1];
           if (location === "onsite") {
-            aggregatedOnsite[role] = (aggregatedOnsite[role] || 0) + roleLocationManDays[key];
+            aggregatedOnsite[role] = (aggregatedOnsite[role] || 0) + processed.roleLocationManDays[key];
           } else if (location === "offsite") {
-            aggregatedOffsite[role] = (aggregatedOffsite[role] || 0) + roleLocationManDays[key];
+            aggregatedOffsite[role] = (aggregatedOffsite[role] || 0) + processed.roleLocationManDays[key];
           }
         });
         const aggregatedExpenseOnsite = {};
@@ -392,21 +387,18 @@ const BSS = () => {
             : aggregatedOffsite[role];
         });
         setChartData({
-          onsite: {
-            roles: Object.keys(aggregatedExpenseOnsite),
-            values: Object.values(aggregatedExpenseOnsite),
-          },
-          offsite: {
-            roles: Object.keys(aggregatedExpenseOffsite),
-            values: Object.values(aggregatedExpenseOffsite),
-          },
+          onsite: { roles: Object.keys(aggregatedExpenseOnsite), values: Object.values(aggregatedExpenseOnsite) },
+          offsite: { roles: Object.keys(aggregatedExpenseOffsite), values: Object.values(aggregatedExpenseOffsite) },
         });
 
         chartContainerRef.current.classList.remove("hidden");
-        updateChart();
-        // Generate the expense report directly from roleLocationManDays
+        // Give state a moment before updating the chart
+        setTimeout(() => {
+          updateChart();
+        }, 500);
+
         generateExpenseReport();
-        renderMaxHoursTable(maximumHoursData);
+        renderMaxHoursTable(processed.maximumHoursData);
       } catch (error) {
         console.error("Error processing file:", error);
         dataTableBodyRef.current.innerHTML = `<tr><td colspan="11" class="text-center py-4 text-red-600">Error processing file: ${error.message}</td></tr>`;
@@ -691,11 +683,11 @@ const BSS = () => {
       ],
     };
 
-    if (chart) {
-      chart.updateOptions({ labels: labels, series: series }, true, true);
+    if (chartRef.current) {
+      chartRef.current.updateOptions({ labels, series }, true, true);
     } else {
-      chart = new ApexCharts(donutChartRef.current, options);
-      chart.render();
+      chartRef.current = new ApexCharts(donutChartRef.current, options);
+      chartRef.current.render();
     }
   };
 
@@ -715,15 +707,16 @@ const BSS = () => {
   const updateChart = () => {
     const onsiteChecked = onsiteCheckboxRef.current?.checked;
     const offsiteChecked = offsiteCheckboxRef.current?.checked;
-    let labels, series;
+    let labels = [];
+    let series = [];
     if (onsiteChecked && !offsiteChecked) {
-      labels = chartDataState.onsite.roles;
-      series = chartDataState.onsite.values;
+      labels = chartData.onsite.roles;
+      series = chartData.onsite.values;
     } else if (!onsiteChecked && offsiteChecked) {
-      labels = chartDataState.offsite.roles;
-      series = chartDataState.offsite.values;
+      labels = chartData.offsite.roles;
+      series = chartData.offsite.values;
     } else {
-      const combined = combineChartData(chartDataState.onsite, chartDataState.offsite);
+      const combined = combineChartData(chartData.onsite, chartData.offsite);
       labels = combined.roles;
       series = combined.values;
     }
@@ -731,8 +724,8 @@ const BSS = () => {
       console.warn("No valid chart data available.");
       return;
     }
-    if (chart) {
-      chart.updateOptions(
+    if (chartRef.current) {
+      chartRef.current.updateOptions(
         {
           labels: labels,
           series: series,
@@ -755,13 +748,12 @@ const BSS = () => {
   };
 
   // --------------------------
-  // Expense Report Generation and Full Report Export
+  // Expense Report Generation and Export
   // --------------------------
-  // Revised generateExpenseReport computes the expense report directly from roleLocationManDays.
   function generateExpenseReport() {
     if (!roleLocationManDays || Object.keys(roleLocationManDays).length === 0) {
       console.warn("No roleLocationManDays data available for expense report.");
-      return [];
+      return;
     }
     const aggregatedOnsite = {};
     const aggregatedOffsite = {};
@@ -785,24 +777,15 @@ const BSS = () => {
         ? aggregatedOffsite[role] * PRICE_MAPPING[role].offsite
         : aggregatedOffsite[role];
     });
-    const combinedExpense = {};
-    Object.keys(aggregatedExpenseOnsite).forEach((role) => {
-      combinedExpense[role] = { onsite: aggregatedExpenseOnsite[role] || 0, offsite: 0, total: 0 };
-    });
-    Object.keys(aggregatedExpenseOffsite).forEach((role) => {
-      combinedExpense[role] = combinedExpense[role] || { onsite: 0, offsite: 0, total: 0 };
-      combinedExpense[role].offsite = aggregatedExpenseOffsite[role] || 0;
-    });
-    for (let role in combinedExpense) {
-      combinedExpense[role].total =
-        combinedExpense[role].onsite + combinedExpense[role].offsite;
-    }
-    let reportData = Object.keys(combinedExpense).map((role) => ({
-      role,
-      onsite: combinedExpense[role].onsite,
-      offsite: combinedExpense[role].offsite,
-      total: combinedExpense[role].total,
-    }));
+    let reportData = Object.keys(aggregatedExpenseOnsite)
+      .concat(Object.keys(aggregatedExpenseOffsite))
+      .filter((role, index, self) => self.indexOf(role) === index)
+      .map((role) => ({
+        role,
+        onsite: aggregatedExpenseOnsite[role] || 0,
+        offsite: aggregatedExpenseOffsite[role] || 0,
+        total: (aggregatedExpenseOnsite[role] || 0) + (aggregatedExpenseOffsite[role] || 0),
+      }));
     reportData.sort((a, b) => b.total - a.total);
     reportData.forEach((item, index) => {
       item.rank = index + 1;
@@ -823,13 +806,12 @@ const BSS = () => {
       });
       reportContainerRef.current.classList.remove("hidden");
     }
-    return reportData;
   }
 
   function exportFullReport() {
     const wb = XLSX.utils.book_new();
     const infoData = [
-      { "File Name": uploadedFileNameBase, "Report Month": reportMonth, "Exported On": new Date().toLocaleString() }
+      { "File Name": fileInputRef.current?.files[0]?.name || "N/A", "Report Month": "", "Exported On": new Date().toLocaleString() },
     ];
     const infoSheet = XLSX.utils.json_to_sheet(infoData);
     if (infoSheet["!ref"]) {
@@ -863,8 +845,8 @@ const BSS = () => {
     }
     XLSX.utils.book_append_sheet(wb, aggSheet, "Aggregated Data");
 
-    const reportData = generateExpenseReport();
-    const expSheet = XLSX.utils.json_to_sheet(reportData, { header: ["rank", "role", "onsite", "offsite", "total"] });
+    generateExpenseReport();
+    const expSheet = XLSX.utils.json_to_sheet([], { header: ["rank", "role", "onsite", "offsite", "total"] });
     if (expSheet["!ref"]) {
       const range = XLSX.utils.decode_range(expSheet["!ref"]);
       for (let c = range.s.c; c <= range.e.c; c++) {
@@ -880,7 +862,7 @@ const BSS = () => {
     }
     XLSX.utils.book_append_sheet(wb, expSheet, "Expense Report");
 
-    const fileName = `${uploadedFileNameBase}_analyzed_${reportMonth}.xlsx`;
+    const fileName = `${fileInputRef.current?.files[0]?.name.replace(/\.[^/.]+$/, "")}_analyzed_.xlsx`;
     const wbout = XLSX.write(wb, { bookType: "xlsx", type: "array", cellStyles: true });
     const blob = new Blob([wbout], { type: "application/octet-stream" });
     const link = document.createElement("a");
@@ -935,7 +917,7 @@ const BSS = () => {
 
     const handleDownloadClick = () => {
       if (aggregatedData && aggregatedData.length > 0) {
-        const fileName = `${uploadedFileNameBase}_analyzed_${reportMonth}.xlsx`;
+        const fileName = `${fileInput?.files[0]?.name.replace(/\.[^/.]+$/, "")}_analyzed_.xlsx`;
         downloadExcel(aggregatedData, fileName);
       } else {
         alert("No data available to download. Please process a file first.");
@@ -953,7 +935,7 @@ const BSS = () => {
       downloadBtn.removeEventListener("click", handleDownloadClick);
       exportReportBtn.removeEventListener("click", exportFullReport);
     };
-  }, []);
+  }, [aggregatedData]);
 
   // --------------------------
   // Update Chart on Data Change
@@ -1000,14 +982,8 @@ const BSS = () => {
       aggregatedExpenseOffsite,
     });
     setChartData({
-      onsite: {
-        roles: Object.keys(aggregatedExpenseOnsite),
-        values: Object.values(aggregatedExpenseOnsite),
-      },
-      offsite: {
-        roles: Object.keys(aggregatedExpenseOffsite),
-        values: Object.values(aggregatedExpenseOffsite),
-      },
+      onsite: { roles: Object.keys(aggregatedExpenseOnsite), values: Object.values(aggregatedExpenseOnsite) },
+      offsite: { roles: Object.keys(aggregatedExpenseOffsite), values: Object.values(aggregatedExpenseOffsite) },
     });
   }, [roleLocationManDays]);
 
@@ -1017,26 +993,12 @@ const BSS = () => {
   return (
     <div className="bg-gray-100">
       <div className="container mx-auto px-4 lg:px-10 py-6 bg-white shadow-lg rounded-lg mt-10">
-        <h1 className="text-3xl font-bold text-center text-gray-800 mb-6">
-          BSS Employee Work Analysis
-        </h1>
+        <h1 className="text-3xl font-bold text-center text-gray-800 mb-6">BSS Employee Work Analysis</h1>
 
         {/* File Upload Section */}
-        <div
-          id="drop-zone"
-          ref={dropZoneRef}
-          className="border-2 border-dashed border-gray-400 p-10 rounded-lg text-center cursor-pointer hover:border-gray-600 transition-colors"
-        >
-          <span className="text-gray-600">
-            Drag &amp; Drop Excel/CSV File Here or Click to Upload
-          </span>
-          <input
-            type="file"
-            id="file-input"
-            ref={fileInputRef}
-            accept=".csv,.xlsx,.xls"
-            className="hidden"
-          />
+        <div id="drop-zone" ref={dropZoneRef} className="border-2 border-dashed border-gray-400 p-10 rounded-lg text-center cursor-pointer hover:border-gray-600 transition-colors">
+          <span className="text-gray-600">Drag &amp; Drop Excel/CSV File Here or Click to Upload</span>
+          <input type="file" id="file-input" ref={fileInputRef} accept=".csv,.xlsx,.xls" className="hidden" />
         </div>
 
         {/* Data Table Section */}
@@ -1045,56 +1007,24 @@ const BSS = () => {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Man Days
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Employee Name
-                  </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Days Worked
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Location
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Role
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Project
-                  </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Total Hours
-                  </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Avg Hours/Day
-                  </th>
-                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Status
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Summary
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Description
-                  </th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Man Days</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Employee Name</th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Days Worked</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Location</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Project</th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Total Hours</th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Avg Hours/Day</th>
+                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Summary</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
                 </tr>
               </thead>
-              <tbody
-                id="data-table-body"
-                ref={dataTableBodyRef}
-                className="bg-white divide-y divide-gray-200"
-              ></tbody>
+              <tbody id="data-table-body" ref={dataTableBodyRef} className="bg-white divide-y divide-gray-200"></tbody>
             </table>
           </div>
           <div className="mt-4 text-center">
-            <button
-              id="download-btn"
-              ref={downloadBtnRef}
-              className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-            >
-              Download Excel
-            </button>
+            <button id="download-btn" ref={downloadBtnRef} className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">Download Excel</button>
           </div>
         </div>
 
@@ -1102,39 +1032,17 @@ const BSS = () => {
         <div id="invoice-container" ref={invoiceContainerRef} className="mt-10"></div>
 
         {/* Dashboard Card (Donut Chart & Location Toggle) */}
-        <div
-          id="chart-container"
-          ref={chartContainerRef}
-          className="max-w-4xl mx-auto bg-white rounded-lg shadow-sm dark:bg-gray-800 p-4 md:p-6 mt-10 hidden"
-        >
+        <div id="chart-container" ref={chartContainerRef} className="max-w-4xl mx-auto bg-white rounded-lg shadow-sm dark:bg-gray-800 p-4 md:p-6 mt-10 hidden">
           <div className="flex justify-between mb-3">
             <div className="flex justify-center items-center">
-              <h5 className="text-xl font-bold leading-none text-gray-900 dark:text-white pe-1">
-                Employee Work Analysis
-              </h5>
-              <svg
-                data-popover-target="chart-info"
-                data-popover-placement="bottom"
-                className="w-3.5 h-3.5 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white cursor-pointer ms-1"
-                xmlns="http://www.w3.org/2000/svg"
-                fill="currentColor"
-                viewBox="0 0 20 20"
-              >
-                <path d="M10 .5a9.5 9.5 0 1 0 9.5 9.5A9.51 9.51 0 0 0 10 .5Zm0 16a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3Zm1-5.034V12a1 1 0 0 1-2 0v-1.418a1 1 0 0 1 1.038-.999 1.436 1.436 0 0 0 1.488-1.441 1.501 1.501 0 1 0-3-.116.986.986 0 0 1-1.037.961 1 1 0 0 1-.96-1.037A3.5 3.5 0 1 1 11 11.466Z" />
+              <h5 className="text-xl font-bold leading-none text-gray-900 dark:text-white pe-1">Employee Work Analysis</h5>
+              <svg data-popover-target="chart-info" data-popover-placement="bottom" className="w-3.5 h-3.5 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white cursor-pointer ms-1" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M10 .5a9.5 9.5 0 1 0 9.5 9.5A9.51 9.51 0 0 0 10 .5Zm0 16a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3Zm1-5.034V12a1 1 0 0 1-2 0v-1.418a1 1 0 0 1 1.038-.999 1.436 1.436 0 0 0 1.488-1.441 1.501 1.501 0 1 0-3-.116.986.986 0 0 1-1.037.961 1 1 0 0 1-.96-1.037A3.5 3.5 0 1 1 11 11.466Z"/>
               </svg>
-              <div
-                data-popover
-                id="chart-info"
-                role="tooltip"
-                className="absolute z-10 invisible inline-block text-sm text-gray-500 transition-opacity duration-300 bg-white border border-gray-200 rounded-lg shadow-xs opacity-0 w-72 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-400"
-              >
+              <div data-popover id="chart-info" role="tooltip" className="absolute z-10 invisible inline-block text-sm text-gray-500 transition-opacity duration-300 bg-white border border-gray-200 rounded-lg shadow-xs opacity-0 w-72 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-400">
                 <div className="p-3 space-y-2">
-                  <h3 className="font-semibold text-gray-900 dark:text-white">
-                    Employee Work Analysis
-                  </h3>
-                  <p>
-                    This chart represents the distribution of man‑days by role (position) based on location type.
-                  </p>
+                  <h3 className="font-semibold text-gray-900 dark:text-white">Employee Work Analysis</h3>
+                  <p>This chart represents the distribution of man‑days by role (position) based on location type.</p>
                 </div>
                 <div data-popper-arrow></div>
               </div>
@@ -1154,10 +1062,7 @@ const BSS = () => {
                   className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded-sm focus:ring-blue-500"
                   onChange={updateChart}
                 />
-                <label
-                  htmlFor="onsite"
-                  className="ms-2 text-sm font-medium text-gray-900 dark:text-gray-300"
-                >
+                <label htmlFor="onsite" className="ms-2 text-sm font-medium text-gray-900 dark:text-gray-300">
                   On‑Site
                 </label>
               </div>
@@ -1171,10 +1076,7 @@ const BSS = () => {
                   className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded-sm focus:ring-blue-500"
                   onChange={updateChart}
                 />
-                <label
-                  htmlFor="offsite"
-                  className="ms-2 text-sm font-medium text-gray-900 dark:text-gray-300"
-                >
+                <label htmlFor="offsite" className="ms-2 text-sm font-medium text-gray-900 dark:text-gray-300">
                   Off‑Site
                 </label>
               </div>
@@ -1183,64 +1085,6 @@ const BSS = () => {
 
           {/* Donut Chart Container */}
           <div className="py-6" id="donut-chart" ref={donutChartRef}></div>
-
-          {/* Optional Time-Range Dropdown */}
-          <div className="grid grid-cols-1 items-center border-gray-200 border-t dark:border-gray-700 justify-between">
-            <div className="flex justify-between items-center pt-5">
-              <div
-                id="lastDaysdropdown"
-                className="z-10 hidden bg-white divide-y divide-gray-100 rounded-lg shadow-sm w-44 dark:bg-gray-700"
-              >
-                <ul className="py-2 text-sm text-gray-700 dark:text-gray-200">
-                  <li>
-                    <a href="#" className="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600">
-                      Yesterday
-                    </a>
-                  </li>
-                  <li>
-                    <a href="#" className="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600">
-                      Today
-                    </a>
-                  </li>
-                  <li>
-                    <a href="#" className="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600">
-                      Last 7 days
-                    </a>
-                  </li>
-                  <li>
-                    <a href="#" className="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600">
-                      Last 30 days
-                    </a>
-                  </li>
-                  <li>
-                    <a href="#" className="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600">
-                      Last 90 days
-                    </a>
-                  </li>
-                </ul>
-              </div>
-              <a
-                href="#"
-                className="uppercase text-sm font-semibold inline-flex items-center rounded-lg text-blue-600 hover:text-blue-700 dark:hover:text-blue-500 hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-2"
-              >
-                Employee Work Analysis
-                <svg
-                  className="w-2.5 h-2.5 ms-1.5 rtl:rotate-180"
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 6 10"
-                >
-                  <path
-                    stroke="currentColor"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                    d="m1 9 4-4-4-4"
-                  />
-                </svg>
-              </a>
-            </div>
-          </div>
         </div>
 
         {/* Expense Report Table */}
@@ -1250,34 +1094,18 @@ const BSS = () => {
             <table id="expense-report-table" className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Rank
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Role
-                  </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    On‑Site Expense
-                  </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Off‑Site Expense
-                  </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Total Expense
-                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Rank</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">On‑Site Expense</th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Off‑Site Expense</th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Total Expense</th>
                 </tr>
               </thead>
               <tbody id="expense-report-body" ref={expenseReportBodyRef} className="bg-white divide-y divide-gray-200"></tbody>
             </table>
           </div>
           <div className="mt-4 text-center">
-            <button
-              id="export-report-btn"
-              ref={exportReportBtnRef}
-              className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600"
-            >
-              Export Full Report as XLSX
-            </button>
+            <button id="export-report-btn" ref={exportReportBtnRef} className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600">Export Full Report as XLSX</button>
           </div>
         </div>
 
@@ -1288,18 +1116,10 @@ const BSS = () => {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Employee Name
-                  </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Max Hours in a Day
-                  </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Max Hours Occurred
-                  </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Total Working Days
-                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Employee Name</th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Max Hours in a Day</th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Max Hours Occurred</th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Total Working Days</th>
                 </tr>
               </thead>
               <tbody id="max-hours-table-body" ref={maxHoursTableRef} className="bg-white divide-y divide-gray-200"></tbody>
