@@ -9,10 +9,10 @@ const Nav = () => {
 
   const mainNav = [
     { path: "/bss", title: "BSS" },
-    { path: "/dl", title: "Data Lake" },
-    { path: "/df", title: "Digital Factory" },
-    { path: "/af", title: "API Factory" },
-    { path: "/zf", title: "Zentity Factory" }
+    // { path: "/dl", title: "Data Lake" },
+    // { path: "/df", title: "Digital Factory" },
+    // { path: "/af", title: "API Factory" },
+    // { path: "/zf", title: "Zentity Factory" }
   ];
 
   const subNavs = {

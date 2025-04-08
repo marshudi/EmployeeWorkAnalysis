@@ -76,11 +76,11 @@ function App() {
           <footer className="bg-white rounded-lg shadow-sm mt-auto dark:bg-gray-800">
             <div className="w-full mx-auto max-w-screen-xl p-4 md:flex md:items-center md:justify-between">
               <span className="text-sm text-gray-500 sm:text-center dark:text-gray-400">
-                © {currentYear} 
+                © {currentYear} <span> </span>
                 <a 
                   href="mailto:intern-mohammed.marshudi@vodafone.om" 
                   className="hover:underline text-red-600 font-semibold">
-                  Marshudi - Vodafone
+                   Mohammed Al-Marshudi - Vodafone
                 </a>. All Rights Reserved.
               </span>
             </div>
