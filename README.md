@@ -1,8 +1,4 @@
-Below is an example of a refreshed **README.md** file that includes both the standard Create React App information and additional details about this particular project’s functionality and usage. Feel free to customize any sections as needed for your specific environment or organizational requirements.
-
----
-
-# BSS Employee Work Analysis
+# Employee Work Analysis
 
 A React application that reads Excel/CSV files, aggregates and analyzes employee work hours, calculates man-days, and generates dynamic expense and invoice details. It uses [XLSX](https://www.npmjs.com/package/xlsx) for file parsing, [ApexCharts](https://apexcharts.com/) for data visualization, and [Tailwind CSS](https://tailwindcss.com/) for styling.
 
